@@ -2,7 +2,7 @@ const Player = require('../GameObjects/Player');
 const { Tile, Region } = require('../GameObjects/Tiles');
 const initializeDeckPlayers = require('../helperFuncs/deckFuncs')
 const getNextPlayer = require('../helperFuncs/playerFuncs')
-const makeid = require('../helperFuncs/roomFuncs')
+const {makeid, playerLeftRoom} = require('../helperFuncs/roomFuncs')
 const colorArr = ['red', 'blue', 'purple', 'yellow', 'orange'];
 
 const rooms = {};
@@ -28,44 +28,12 @@ module.exports = io => {
       delete rooms[roomId]
     })
 
-    // eslint-disable-next-line complexity
     socket.on('disconnecting', () => {
       const [socketId, roomId] = Object.keys(socket.rooms);
       if (roomId && rooms.hasOwnProperty(roomId)) {
         let player = rooms[roomId].players.find(curPlayer => curPlayer.socketId === socketId)
         if (player) {
-          // eslint-disable-next-line complexity
-          setTimeout(() => {
-            player = rooms[roomId].players.find(curPlayer => curPlayer.name === player.name)
-            if (player.socketId === socketId) {
-              if (rooms[roomId].gameState === 'playing') {
-                rooms[roomId].disconnected.push(player)
-                if (rooms[roomId].disconnected.length === rooms[roomId].players.length) {
-                  delete rooms[roomId]
-                } else {
-                  if (player.host) {
-                    player.setHost(false)
-                    let newHost = rooms[roomId].players[Math.floor(Math.random()*rooms[roomId].players.length)]
-                    while (rooms[roomId].disconnected.find(player => player.name === newHost.name)) {
-                      newHost = rooms[roomId].players[Math.floor(Math.random()*rooms[roomId].players.length)]
-                    }
-                    newHost.setHost(true)
-                    broadcastToAll(socket, roomId, 'newHost', rooms[roomId].players)
-                  }
-                  socket.broadcast.to(roomId).emit('disconnectedPlayer', player.name)
-                }
-              } else if (player.host) {
-                socket.broadcast.to(roomId).emit('hostLeft')
-                delete rooms[roomId]
-              } else {
-                rooms[roomId].players = rooms[roomId].players.filter(curPlayer => player.name !== curPlayer.name)
-                if (player.animal !== '' && !rooms[roomId].meeple.includes(player.animal)) {
-                  rooms[roomId].meeple.push(player.animal)
-                }
-                socket.broadcast.to(roomId).emit('playerLeft', rooms[roomId].meeple, rooms[roomId].players)
-              }
-            }
-          }, 5000)
+          playerLeftRoom(rooms, roomId, socketId, player, broadcastToAll, socket)
         }
       }
     })
@@ -101,7 +69,7 @@ module.exports = io => {
       } else if (rooms[roomId].players.length > 1) {
         rooms[roomId].deck = initializeDeckPlayers(rooms[roomId].players)
         rooms[roomId].gameState = 'playing'
-        const startTile = new Tile([new Region('road', [1, 3], false, [0.5, 0.5]),new Region('city', [0], false, [0.5, 0.1])],0);
+        const startTile = new Tile([new Region('road', [1, 3], false, [0.5, 0.5]),new Region('city', [0], false, [0.5, 0.1])], 0);
         const firstTile = rooms[roomId].deck.getCard();
         broadcastToAll(socket, roomId, 'initGame', rooms[roomId].players, roomId, startTile, firstTile, rooms[roomId].players[0])
       } else {
